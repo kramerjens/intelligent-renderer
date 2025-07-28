@@ -110,9 +110,17 @@ Elemente:
             return jsonify({"error": f"Ein Fehler ist aufgetreten: {str(e)}"}), 500
 
 
+
 @functions_framework.http
 def intelligent_renderer(request):
     """
-    Synchronous wrapper that calls the main async scraper logic.
+    Synchroner Wrapper, der die asynchrone Scraper-Logik mit explizitem
+    Event-Loop-Management aufruft.
     """
-    return asyncio.run(run_scraper(request))
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:  # 'RuntimeError: There is no current event loop...'
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    return loop.run_until_complete(run_scraper(request))
