@@ -24,7 +24,7 @@ if not api_key:
     raise ValueError("GEMINI_API_KEY Umgebungsvariable nicht gesetzt.")
 
 genai.configure(api_key=api_key)
-model = genai.GenerativeModel("gemini-1.5-pro-latest")
+model = genai.GenerativeModel("gemini-2.5-flash")
 
 # --- Hauptlogik ---
 async def run_scraper(request):
@@ -42,6 +42,53 @@ async def run_scraper(request):
             await page.goto(target_url, wait_until="domcontentloaded", timeout=60000)
             await asyncio.sleep(5)
 
+            # =================================================================
+            # NEUER SCHRITT: Intelligente KI-basierte Cookie-Banner-Handhabung
+            # =================================================================
+            try:
+                print("Suche nach Cookie-Banner zur Akzeptanz...")
+                cookie_candidates = await page.query_selector_all('button, a, [role="button"], [onclick]')
+                
+                cookie_simplified_elements = []
+                for idx, element in enumerate(cookie_candidates):
+                    text = await element.inner_text()
+                    is_visible = await element.is_visible()
+                    if is_visible and text.strip():
+                        unique_id = f"pw-cookie-candidate-{idx}"
+                        await element.evaluate("(el, id) => el.setAttribute('data-pw-id', id)", unique_id)
+                        cookie_simplified_elements.append({
+                            "selector": f"[data-pw-id='{unique_id}']",
+                            "text": " ".join(text.strip().split())
+                        })
+
+                if cookie_simplified_elements:
+                    cookie_prompt = f"""
+Du bist ein Experte für Web-Automatisierung. Deine Aufgabe ist es, den EINEN Button zu identifizieren, der Cookies akzeptiert oder der Datenverarbeitung zustimmt.
+Achte auf Schlüsselwörter wie 'Alle akzeptieren', 'Zustimmen', 'Einverstanden', 'Ja', 'Accept all', 'Agree'.
+Analysiere die folgende Liste von Elementen. Antworte NUR mit dem CSS-Selektor des korrekten Elements. Wenn kein passendes Element gefunden wird, antworte mit 'NONE'.
+
+Elemente:
+{cookie_simplified_elements}
+"""
+                    response = await asyncio.to_thread(model.generate_content, cookie_prompt)
+                    cookie_selector_to_click = response.text.strip()
+
+                    if "none" not in cookie_selector_to_click.lower() and cookie_selector_to_click:
+                        print(f"KI hat Cookie-Button identifiziert: {cookie_selector_to_click}. Klicke...")
+                        await page.locator(cookie_selector_to_click).click(timeout=5000)
+                        await asyncio.sleep(3) # Kurze Pause nach dem Klick
+                    else:
+                        print("KI hat keinen Cookie-Button identifiziert.")
+                else:
+                    print("Keine klickbaren Elemente für Cookie-Prüfung gefunden.")
+
+            except Exception as e:
+                print(f"Fehler bei der Cookie-Banner-Handhabung (oft unkritisch): {e}")
+            # =================================================================
+            # ENDE DES NEUEN SCHRITTS
+            # =================================================================
+
+            # Start der Hauptschleife zur Job-Interaktion (unverändert)
             for i in range(MAX_INTERACTIONS):
                 print(f"Interaktion {i + 1}/{MAX_INTERACTIONS}...")
                 initial_html = await page.evaluate("() => document.body.innerHTML")
@@ -73,10 +120,7 @@ Analysiere die folgende Liste von klickbaren Elementen. Antworte NUR mit dem CSS
 Elemente:
 {simplified_elements}
 """
-
-
                 response = await asyncio.to_thread(model.generate_content, prompt)
-
                 selector_to_click = response.text.strip()
 
                 if "none" in selector_to_click.lower() or not selector_to_click:
