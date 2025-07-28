@@ -105,12 +105,20 @@ Elemente:
                 await browser.close()
             return jsonify({"error": f"Ein Fehler ist aufgetreten: {str(e)}"}), 500
 
-# --- KORRIGIERTER ENTRY POINT ---
 @functions_framework.http
 def intelligent_renderer(request):
     """
-    Synchroner Wrapper, der die asynchrone Funktion mit asyncio.run() aufruft.
-    asyncio.run() startet die übergebene Coroutine, verwaltet die Event Loop
-    und gibt das Ergebnis zurück, sobald es fertig ist.
+    Synchroner Wrapper, der die asynchrone Logik mit explizitem
+    Event-Loop-Management aufruft, um parallele Anfragen korrekt zu behandeln.
     """
-    return asyncio.run(run_scraper(request))
+    try:
+        # Versuche, die bereits für diesen Thread laufende Event Loop zu bekommen.
+        loop = asyncio.get_running_loop()
+    except RuntimeError:  # Tritt auf, wenn keine Loop im aktuellen Thread läuft.
+        # Wenn keine Loop existiert, erstelle eine neue und setze sie für diesen Thread.
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    # Führe die Aufgabe aus. Wichtig: run_until_complete() schließt die Loop nicht,
+    # sodass sie für die nächste parallele Anfrage wiederverwendet werden kann.
+    return loop.run_until_complete(run_scraper(request))
