@@ -107,9 +107,10 @@ Elemente:
 
 # --- KORRIGIERTER ENTRY POINT ---
 @functions_framework.http
-async def intelligent_renderer(request):
+def intelligent_renderer(request):
     """
-    Asynchroner HTTP-Wrapper. Das Framework verwaltet die Event Loop.
-    Wir rufen die Scraper-Funktion direkt mit await auf.
+    Synchroner Wrapper, der die asynchrone Funktion mit asyncio.run() aufruft.
+    asyncio.run() startet die übergebene Coroutine, verwaltet die Event Loop
+    und gibt das Ergebnis zurück, sobald es fertig ist.
     """
-    return await run_scraper(request)
+    return asyncio.run(run_scraper(request))
