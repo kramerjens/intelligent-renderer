@@ -6,32 +6,28 @@ from flask import jsonify
 from playwright.async_api import async_playwright
 import google.generativeai as genai
 
-# Browser-Installation sicherstellen
-
+# --- Browser-Installation sicherstellen (unverändert) ---
 install_marker_path = "/tmp/playwright_installed"
 if not os.path.exists(install_marker_path):
     print("Playwright-Browser nicht gefunden. Starte Installation...")
-    subprocess.run(["playwright", "install"], check=True)
+    # Führe den Befehl im Shell-Kontext aus, um sicherzustellen, dass er korrekt gefunden wird
+    subprocess.run("playwright install", shell=True, check=True)
     with open(install_marker_path, "w") as f:
         f.write("done")
     print("Playwright-Browser erfolgreich installiert.")
 
-# Konfiguration 
+# --- Konfiguration (unverändert) ---
 MAX_INTERACTIONS = 15
 
-# API Initialisierung
-
+# --- API Initialisierung (unverändert) ---
 api_key = os.getenv('GEMINI_API_KEY')
 if not api_key:
     raise ValueError("GEMINI_API_KEY Umgebungsvariable nicht gesetzt.")
 
 genai.configure(api_key=api_key)
-model = genai.GenerativeModel("gemini-1.5-pro-latest") # Das Modell wird hier instanziiert
+model = genai.GenerativeModel("gemini-1.5-pro-latest")
 
-
-#Cloud Function
-
-
+# --- Hauptlogik (unverändert) ---
 async def run_scraper(request):
     request_json = request.get_json(silent=True)
     if not request_json or "url" not in request_json:
@@ -51,7 +47,6 @@ async def run_scraper(request):
                 print(f"Interaktion {i + 1}/{MAX_INTERACTIONS}...")
                 initial_html = await page.evaluate("() => document.body.innerHTML")
 
-                # Finde alle potenziell klickbaren Elemente
                 candidates = await page.query_selector_all('button, a, [role="button"], [onclick]')
                 
                 simplified_elements = []
@@ -59,13 +54,12 @@ async def run_scraper(request):
                     text = await element.inner_text()
                     is_visible = await element.is_visible()
                     if is_visible and text.strip():
-                        # Erstelle einen eindeutigen Selektor für die Interaktion
                         unique_id = f"pw-candidate-{i}-{idx}"
                         await element.evaluate("(el, id) => el.setAttribute('data-pw-id', id)", unique_id)
                         
                         simplified_elements.append({
                             "selector": f"[data-pw-id='{unique_id}']",
-                            "text": " ".join(text.strip().split()) # Normalisiere Whitespace
+                            "text": " ".join(text.strip().split())
                         })
                 
                 if not simplified_elements:
@@ -80,7 +74,7 @@ Analysiere die folgende Liste von klickbaren Elementen. Antworte NUR mit dem CSS
 Elemente:
 {simplified_elements}
 """
-
+                # Der kritische Aufruf, der den Fehler verursachte
                 response = await model.generate_content_async(prompt)
                 selector_to_click = response.text.strip()
 
@@ -106,21 +100,16 @@ Elemente:
             return jsonify({"html": final_content}), 200
 
         except Exception as e:
-            await browser.close()
+            # Sicherstellen, dass der Browser auch bei einem Fehler geschlossen wird
+            if 'browser' in locals() and browser.is_connected():
+                await browser.close()
             return jsonify({"error": f"Ein Fehler ist aufgetreten: {str(e)}"}), 500
 
-
-
+# --- KORRIGIERTER ENTRY POINT ---
 @functions_framework.http
-def intelligent_renderer(request):
+async def intelligent_renderer(request):
     """
-    Synchroner Wrapper, der die asynchrone Scraper-Logik mit explizitem
-    Event-Loop-Management aufruft.
+    Asynchroner HTTP-Wrapper. Das Framework verwaltet die Event Loop.
+    Wir rufen die Scraper-Funktion direkt mit await auf.
     """
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:  # 'RuntimeError: There is no current event loop...'
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    
-    return loop.run_until_complete(run_scraper(request))
+    return await run_scraper(request)
