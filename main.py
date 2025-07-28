@@ -6,20 +6,19 @@ from flask import jsonify
 from playwright.async_api import async_playwright
 import google.generativeai as genai
 
-# --- Browser-Installation sicherstellen (unverändert) ---
+# --- Browser-Installation sicherstellen ---
 install_marker_path = "/tmp/playwright_installed"
 if not os.path.exists(install_marker_path):
     print("Playwright-Browser nicht gefunden. Starte Installation...")
-    # Führe den Befehl im Shell-Kontext aus, um sicherzustellen, dass er korrekt gefunden wird
     subprocess.run("playwright install", shell=True, check=True)
     with open(install_marker_path, "w") as f:
         f.write("done")
     print("Playwright-Browser erfolgreich installiert.")
 
-# --- Konfiguration (unverändert) ---
+# --- Konfiguration ---
 MAX_INTERACTIONS = 15
 
-# --- API Initialisierung (unverändert) ---
+# --- API Initialisierung ---
 api_key = os.getenv('GEMINI_API_KEY')
 if not api_key:
     raise ValueError("GEMINI_API_KEY Umgebungsvariable nicht gesetzt.")
@@ -27,7 +26,7 @@ if not api_key:
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel("gemini-1.5-pro-latest")
 
-# --- Hauptlogik (unverändert) ---
+# --- Hauptlogik ---
 async def run_scraper(request):
     request_json = request.get_json(silent=True)
     if not request_json or "url" not in request_json:
@@ -74,8 +73,10 @@ Analysiere die folgende Liste von klickbaren Elementen. Antworte NUR mit dem CSS
 Elemente:
 {simplified_elements}
 """
-                # Der kritische Aufruf, der den Fehler verursachte
-                response = await model.generate_content_async(prompt)
+
+
+                response = await asyncio.to_thread(model.generate_content, prompt)
+
                 selector_to_click = response.text.strip()
 
                 if "none" in selector_to_click.lower() or not selector_to_click:
@@ -100,25 +101,14 @@ Elemente:
             return jsonify({"html": final_content}), 200
 
         except Exception as e:
-            # Sicherstellen, dass der Browser auch bei einem Fehler geschlossen wird
             if 'browser' in locals() and browser.is_connected():
                 await browser.close()
             return jsonify({"error": f"Ein Fehler ist aufgetreten: {str(e)}"}), 500
 
+# --- Entry Point (unverändert zur letzten Version) ---
 @functions_framework.http
 def intelligent_renderer(request):
     """
-    Synchroner Wrapper, der die asynchrone Logik mit explizitem
-    Event-Loop-Management aufruft, um parallele Anfragen korrekt zu behandeln.
+    Synchroner Wrapper, der die asynchrone Funktion mit asyncio.run() aufruft.
     """
-    try:
-        # Versuche, die bereits für diesen Thread laufende Event Loop zu bekommen.
-        loop = asyncio.get_running_loop()
-    except RuntimeError:  # Tritt auf, wenn keine Loop im aktuellen Thread läuft.
-        # Wenn keine Loop existiert, erstelle eine neue und setze sie für diesen Thread.
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    # Führe die Aufgabe aus. Wichtig: run_until_complete() schließt die Loop nicht,
-    # sodass sie für die nächste parallele Anfrage wiederverwendet werden kann.
-    return loop.run_until_complete(run_scraper(request))
+    return asyncio.run(run_scraper(request))
