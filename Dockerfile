@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # --- THIS IS THE CRITICAL STEP ---
 # Run the Playwright command to install both the browsers AND their system dependencies.
-RUN playwright install --with-deps
+RUN playwright install chromium --with-deps
 
 # Copy the rest of your application code (main.py) into the container.
 COPY . .
