@@ -3,6 +3,7 @@ import asyncio
 import sys
 import json
 import hashlib
+from markdownify import markdownify as md
 from datetime import datetime, timezone
 import google.generativeai as genai
 from playwright.async_api import async_playwright
@@ -154,17 +155,25 @@ async def run_scraper(target_url):
             raise IOError(f"!!! [SCRAPER] Kritischer Fehler beim Scraping von {target_url}: {e}")
 
 async def parse_html_with_ai(html_content, company_id, company_name):
-    print(f"--> [PARSER] Starte HTML-Analyse mit Gemini für '{company_name}'...")
+    print(f"--> [PARSER] Konvertiere HTML zu Markdown für '{company_name}'...")
+    try:
+        markdown_content = md(html_content, heading_style="ATX")
+    except Exception as e:
+        print(f"!!! [PARSER] Fehler bei der Konvertierung zu Markdown: {e}", file=sys.stderr)
+        return []
+
+    print(f"--> [PARSER] Starte Markdown-Analyse mit Gemini...")
     prompt = f"""
-    Analysiere den folgenden HTML-Code einer Karriereseite. Extrahiere alle ausgeschriebenen Jobs.
+    Analysiere den folgenden Markdown-Text einer Karriereseite von '{company_name}'. Extrahiere alle ausgeschriebenen Jobs.
+    Achte auf Listen und Links. Jeder Job hat typischerweise einen Titel, einen Standort und einen Link.
     Gib das Ergebnis als valides JSON-Array zurück. Jedes Objekt im Array muss exakt die folgenden Schlüssel haben: "job_titel", "job_url", "job_standort".
     - Der "job_standort" ist oft in der Nähe des Titels. Wenn kein Standort gefunden wird, setze den Wert auf "Unbekannt".
     - Die "job_url" muss die absolute URL zur Job-Detailseite sein.
     - Gib NUR das JSON-Array zurück, sonst nichts.
 
-    HTML-Code (Ausschnitt):
-    ```html
-    {html_content[:25000]}
+    Markdown-Text:
+    ```markdown
+    {markdown_content[:25000]}
     ```
     """
     try:
@@ -174,14 +183,11 @@ async def parse_html_with_ai(html_content, company_id, company_name):
             generation_config={"response_mime_type": "application/json"}
         )
         
-        # --- NEUE, ROBUSTE VERARBEITUNG ---
         data = json.loads(response.text)
         extracted_jobs = []
         if isinstance(data, list):
-            # Fall 1: Die KI hat direkt eine Liste zurückgegeben (Idealfall)
             extracted_jobs = data
         elif isinstance(data, dict) and 'jobs' in data and isinstance(data['jobs'], list):
-            # Fall 2: Die KI hat ein Objekt mit einem 'jobs'-Schlüssel zurückgegeben
             extracted_jobs = data['jobs']
         else:
             print(f"--> [PARSER] Unerwartetes JSON-Format von der KI erhalten: {data}")
@@ -191,7 +197,6 @@ async def parse_html_with_ai(html_content, company_id, company_name):
         rows_to_insert = []
         now = datetime.now(timezone.utc).isoformat()
         for job in extracted_jobs:
-            # Zusätzliche Prüfung, ob 'job' wirklich ein Dictionary ist
             if not isinstance(job, dict):
                 continue
 
@@ -217,7 +222,6 @@ async def parse_html_with_ai(html_content, company_id, company_name):
         return rows_to_insert
     except Exception as e:
         print(f"!!! [PARSER] FEHLER bei der KI-Analyse oder JSON-Verarbeitung: {e}", file=sys.stderr)
-        # getattr() ist eine gute Absicherung, falls 'response' gar nicht erst erstellt wird
         print(f"KI-Antwort war: {getattr(response, 'text', 'Keine Antwort erhalten')}", file=sys.stderr)
         return []
 
