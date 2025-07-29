@@ -3,7 +3,7 @@ steps:
   args: [
     'build',
     '-t',
-    'europe-west3-docker.pkg.dev/$PROJECT_ID/renderers/career-page-renderer:$SHORT_SHA',
+    'europe-west3-docker.pkg.dev/$PROJECT_ID/renderers/career-page-processor:$SHORT_SHA',
     '.'
   ]
 images:
