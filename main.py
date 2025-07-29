@@ -173,26 +173,41 @@ async def parse_html_with_ai(html_content, company_id, company_name):
             prompt,
             generation_config={"response_mime_type": "application/json"}
         )
-        extracted_jobs = json.loads(response.text)
-        print(f"--> [PARSER] {len(extracted_jobs)} Jobs durch KI extrahiert.")
+        
+        # --- NEUE, ROBUSTE VERARBEITUNG ---
+        data = json.loads(response.text)
+        extracted_jobs = []
+        if isinstance(data, list):
+            # Fall 1: Die KI hat direkt eine Liste zurückgegeben (Idealfall)
+            extracted_jobs = data
+        elif isinstance(data, dict) and 'jobs' in data and isinstance(data['jobs'], list):
+            # Fall 2: Die KI hat ein Objekt mit einem 'jobs'-Schlüssel zurückgegeben
+            extracted_jobs = data['jobs']
+        else:
+            print(f"--> [PARSER] Unerwartetes JSON-Format von der KI erhalten: {data}")
+
+        print(f"--> [PARSER] {len(extracted_jobs)} Jobs nach der Validierung extrahiert.")
         
         rows_to_insert = []
         now = datetime.now(timezone.utc).isoformat()
         for job in extracted_jobs:
+            # Zusätzliche Prüfung, ob 'job' wirklich ein Dictionary ist
+            if not isinstance(job, dict):
+                continue
+
             job_titel = job.get("job_titel")
             job_url = job.get("job_url")
 
-            # Erzeuge eine eindeutige ID für den Job
             if job_titel and job_url:
                 unique_string = f"{company_id}-{job_url}-{job_titel}"
                 job_id = hashlib.md5(unique_string.encode()).hexdigest()
             else:
-                job_id = None # Falls Titel oder URL fehlen
+                job_id = None
 
             rows_to_insert.append({
                 "company_id": company_id,
                 "company_name": company_name,
-                "job_id": job_id, # Das neue Feld
+                "job_id": job_id,
                 "job_titel": job_titel,
                 "job_standort": job.get("job_standort", "Unbekannt"),
                 "job_url": job_url,
@@ -202,6 +217,7 @@ async def parse_html_with_ai(html_content, company_id, company_name):
         return rows_to_insert
     except Exception as e:
         print(f"!!! [PARSER] FEHLER bei der KI-Analyse oder JSON-Verarbeitung: {e}", file=sys.stderr)
+        # getattr() ist eine gute Absicherung, falls 'response' gar nicht erst erstellt wird
         print(f"KI-Antwort war: {getattr(response, 'text', 'Keine Antwort erhalten')}", file=sys.stderr)
         return []
 
