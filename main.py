@@ -67,7 +67,7 @@ async def find_and_click_element(page, purpose, unique_id_prefix):
     # Der Einfachheit halber nutzen wir hier direkt den robusten KI-Fallback.
     
     prompt_templates = {
-        'cookie': "Finde den Button, der Cookies akzeptiert. Antworte NUR mit dem CSS-Selektor. Wenn nichts passt, antworte 'NONE'.",
+        'cookie': "Finde genau den Button, der Cookies akzeptiert. Antworte NUR mit dem CSS-Selektor. Wenn nichts passt, antworte 'NONE'.",
         'load_more': "Finde den Button oder Link, der MEHR JOBS lädt oder zur NÄCHSTEN SEITE navigiert. Antworte NUR mit dem CSS-Selektor. Wenn nichts passt, antworte 'NONE'."
     }
     
